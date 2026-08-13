@@ -6,6 +6,12 @@ dist/
 
 # Arquivos de ambiente
 .env
+.env.*
+!.env.example
+
+# Segredos e tokens soltos
+token.txt
+*.token
 
 # Logs
 logs
