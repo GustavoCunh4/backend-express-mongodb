@@ -15,3 +15,11 @@ export const logger = winston.createLogger({
     })
   ]
 });
+
+// Evita jogar e-mail completo (PII) em log de auditoria; mantem so o suficiente pra rastrear.
+export function maskEmail(email: string): string {
+  const [user, domain] = email.split('@');
+  if (!user || !domain) return '***';
+  const visible = user.slice(0, 2);
+  return `${visible}${'*'.repeat(Math.max(user.length - visible.length, 1))}@${domain}`;
+}
