@@ -1,162 +1,38 @@
-# FullStack Mini Projeto — Backend (Node.js, TypeScript, Express, MongoDB, JWT)
+# Backend Express + MongoDB
 
-Aplicação backend com autenticação JWT, organizada em camadas (middlewares, routes, controllers, services, models, database), com conexão MongoDB local e em produção (Atlas/Vercel). Inclui coleção de requisições para Insomnia em `requests/requests.yaml`.
+API de tarefas com autenticação por JWT, feita em Node.js/TypeScript com Express 5 e MongoDB (Mongoose). Cada usuário cadastra tarefas com título, status, prioridade e data de vencimento, e só enxerga as próprias — o resto é login, registro e um CRUD protegido por token.
 
-## Sumário
-- Stack e Arquitetura
-- Requisitos
-- Configuração do Ambiente
-- Executando Localmente
-- Testando com Insomnia
-- Deploy (Vercel)
-- MongoDB Atlas (produção)
-- Docker (opcional para desenvolvimento)
-- Endpoints
-- Erros e Logs
-- Troubleshooting
+Esse repo é a metade Mongo de um exercício que fiz em dois bancos diferentes de propósito: a mesma API, o mesmo domínio (tarefas + auth), rodando uma vez sobre MongoDB e outra sobre PostgreSQL (repo `backend-express-postgresql`). A ideia era sentir na mão a diferença entre modelar como documento e modelar como tabela relacional, não só ler sobre isso. Deu pra perceber bem rápido: aqui o schema é solto (o Mongoose valida no nível da aplicação, o banco não impõe muita coisa), a query de filtro por título vira regex, e não existe transação real cobrindo as duas coleções — se eu fosse fazer de novo com relações mais fortes entre entidades, provavelmente escolheria Postgres direto e usaria o Mongo só se o motivo fosse dado sem estrutura fixa de verdade.
 
-## Stack e Arquitetura
-- Node.js + TypeScript
-- Express 5
-- MongoDB com Mongoose
-- Autenticação JWT (`jsonwebtoken`)
-- Hash de senha (`bcrypt`)
-- Validação (`express-validator`)
-- Logs: `winston` + `morgan`
-- Serverless handler para Vercel
+## Como está organizado
 
-Estrutura de camadas:
-- `middlewares/` autenticação, validação, tratamento de erros
-- `routes/` define rotas públicas e protegidas
-- `controllers/` orquestram entrada/saída HTTP
-- `services/` regras de negócio (registro/login)
-- `models/` Mongoose Schemas e Models
-- `database/` conexão MongoDB
+`src/routes` define o que é público e o que passa por `authMiddleware`; `controllers` só traduzem HTTP pra chamada de serviço; `services` tem a regra de negócio (hash de senha, emissão de JWT, CRUD de tarefas com checagem de dono); `models` são os schemas do Mongoose; `database/connection.ts` cuida da conexão (com timeout curto pra não travar em ambiente serverless). Tem um endpoint `/_debug/db` que mostra o estado da conexão com a URI mascarada — só fica ativo fora de produção, de propósito.
 
-## Requisitos
-- Node.js 18+
-- MongoDB local rodando OU conta no MongoDB Atlas
-- Opcional: Docker (para subir MongoDB local)
+## Rodando local
 
-## Configuração do Ambiente
-Crie um arquivo `.env` na raiz do projeto com as variáveis:
-
-```
-PORT=3000
-NODE_ENV=development
-
-# Desenvolvimento (local)
-MONGO_URI=mongodb://127.0.0.1:27017/fullstack_mini_projeto
-
-# Produção (Atlas)
-MONGO_URI_PROD=mongodb+srv://<usuario>:<senha>@<cluster>/<database>?retryWrites=true&w=majority
-
-# JWT
-JWT_SECRET=sua_chave_bem_grande_e_secreta
-JWT_EXPIRES=1h
-```
-
-Notas:
-- Em desenvolvimento, o app usa `MONGO_URI`. Em produção (`NODE_ENV=production`), usa `MONGO_URI_PROD`.
-- O banco e a collection são criados automaticamente na primeira escrita.
-
-## Executando Localmente
-1) Instale dependências:
-```
+```bash
 npm install
-```
-2) Garanta um MongoDB ouvindo em `127.0.0.1:27017` (veja seção Troubleshooting e Docker abaixo).
-3) Rode a aplicação em dev:
-```
 npm run dev
 ```
-- Logs esperados: Ambiente, URI mascarada e “MongoDB conectado com sucesso”, seguido do “Servidor rodando em http://localhost:3000”.
 
-## Testando com Insomnia
-- Importe `requests/requests.yaml` no Insomnia.
-- Coleções incluídas: Auth (register/login) e Protected (/protected) com cenários de sucesso e erro.
-- Para “Protected - with valid token”, rode “Login - success” antes; a requisição já referencia o token dinamicamente.
+Precisa de um MongoDB acessível — local (`mongodb://127.0.0.1:27017/...`) ou um cluster Atlas. Copie `.env.example` para `.env` e preencha:
 
-## Deploy (Vercel)
-1) Suba o repositório ao GitHub (já configurado).
-2) No painel Vercel, importe o projeto e configure as Variáveis de Ambiente (Production):
-   - `NODE_ENV=production`
-   - `MONGO_URI_PROD` (URI do Atlas)
-   - `JWT_SECRET`
-   - `JWT_EXPIRES=1h` (opcional)
-3) Deploy. O projeto já possui `vercel.json` e handler serverless em `api/index.ts` que aguarda a conexão com o banco.
-4) No Insomnia, altere o ambiente para “Production” (já incluso no `requests.yaml`) e teste.
+- `PORT` — porta do servidor (padrão 3000)
+- `NODE_ENV` — `development` usa `MONGO_URI`, `production` usa `MONGO_URI_PROD`
+- `MONGO_URI` / `MONGO_URI_PROD` — string de conexão do Mongo
+- `JWT_SECRET` — chave de assinatura do token (obrigatório, sem valor padrão)
+- `JWT_EXPIRES` — validade do token (padrão `1h`)
 
-## MongoDB Atlas (produção)
-Passos no Atlas:
-- Crie um Cluster (Free Tier serve).
-- Crie um usuário de banco (username/senha) com acesso ao DB desejado.
-- Em “Network Access”, adicione seu IP público ou “Allow Access from Anywhere (0.0.0.0/0)” para testes.
-- Obtenha a Connection String (SRV), por exemplo:
-  `mongodb+srv://usuario:senha@cluster0.xxxxx.mongodb.net/fullstack_mini_projeto?retryWrites=true&w=majority`
-- Coloque esta string em `MONGO_URI_PROD` no `.env` local (para testar em dev com Atlas) e também nas variáveis de ambiente da Vercel.
+Sem `MONGO_URI` a aplicação nem sobe; sem `JWT_SECRET` o login falha com erro explícito em vez de assinar token com segredo vazio.
 
-## Docker (opcional para desenvolvimento)
-Subir MongoDB local rapidamente com Docker:
+## Deploy
 
-Sem autenticação (mais simples para dev):
-```
-docker run -d --name mongo \
-  -p 27017:27017 \
-  -v mongo_data:/data/db \
-  mongo:6
-```
-- Use `MONGO_URI=mongodb://127.0.0.1:27017/fullstack_mini_projeto`.
+Vercel, via `api/index.ts` (handler serverless que reaproveita a mesma conexão entre invocações) e `vercel.json` reescrevendo tudo pra esse handler. As variáveis de ambiente de produção são as mesmas do `.env`, configuradas no painel da Vercel.
 
-Com autenticação:
-```
-docker run -d --name mongo \
-  -p 27017:27017 \
-  -e MONGO_INITDB_ROOT_USERNAME=root \
-  -e MONGO_INITDB_ROOT_PASSWORD=secret \
-  -v mongo_data:/data/db \
-  mongo:6
-```
-- A URI muda para: `mongodb://root:secret@127.0.0.1:27017/fullstack_mini_projeto?authSource=admin`.
+## Testando
 
-## Endpoints
-- POST `/register`
-  - body: `{ name, email, password }`
-  - 201 em sucesso; 409 se email já existe; 422 para dados inválidos.
-- POST `/login`
-  - body: `{ email, password }`
-  - 200 em sucesso: `{ token }`; 401 credenciais inválidas; 422 inválido/mal formatado.
-- GET `/protected`
-  - Header `Authorization: Bearer <token>`
-  - 200 em sucesso: `{ message: 'Acesso autorizado' }`
-  - 401 se sem token/invalid token.
+`requests/` tem uma coleção pro Insomnia (`requests.yaml` para produção, `requests_local.yaml` com URLs fixas em `127.0.0.1`) cobrindo os casos de sucesso e erro de cada rota — não é suíte automatizada, é o roteiro que usei pra validar manualmente durante o desenvolvimento.
 
-## Erros e Logs
-- Logs com `winston` (nível `debug` em dev, `info` em prod) e `morgan` HTTP.
-- Middleware de erros retorna `{ error: <mensagem> }` e status coerente (422/401/409/500 etc.).
+## O que eu mudaria hoje
 
-## Troubleshooting
-- Erro: `connect ECONNREFUSED 127.0.0.1:27017`
-  - Significa que não há processo MongoDB escutando localmente.
-  - Soluções:
-    - Instalar MongoDB Community Server (Windows):
-      - Após instalar, verifique o serviço “MongoDB” em execução (Services). Porta padrão 27017.
-      - No Compass, você pode apenas conectar em `mongodb://127.0.0.1:27017` (o DB será criado automaticamente no primeiro insert).
-    - OU subir via Docker (veja seção Docker) e manter a `MONGO_URI` apontando para `127.0.0.1:27017`.
-    - OU usar o Atlas também no desenvolvimento: copie a `mongodb+srv://...` para `MONGO_URI` e rode com ela.
-  - Firewalls/Antivírus podem bloquear a porta 27017; libere se necessário.
-
-- Erro: `MongoNetworkError: failed to connect to server` com Atlas
-  - Verifique se seu IP está na allowlist do Atlas.
-  - Confirme usuário/senha corretos e se o database name existe na string.
-  - Mantenha `retryWrites=true&w=majority`.
-
-- Erro: `JWT_SECRET não definido`
-  - Garanta que `.env` tem `JWT_SECRET` e que `npm run dev` carrega `dotenv/config` (já está configurado no `server.ts`).
-
-- 404 inesperado
-  - Confirme a URL base e path (`/register`, `/login`, `/protected`) e que a app está rodando na porta certa (`PORT`).
-
-## Licença
-Uso educacional — sem licença explícita adicionada.
-
+Não tem teste automatizado — o que existe é a coleção do Insomnia. Numa versão de produção de verdade eu adicionaria Vitest cobrindo os services (é onde está a lógica) antes de qualquer coisa. Também tornaria `JWT_EXPIRES` mais curto por padrão com refresh token, porque 1h de acesso sem revogação não é o ideal pra nada que não seja estudo.
